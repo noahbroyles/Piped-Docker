@@ -6,6 +6,14 @@ echo "Enter the reverse proxy you would like to use (caddy, nginx or standalone)
 echo "Is your hostname reachable via HTTP or HTTPS? (eg: https)" && read -r http_mode
 echo "Enable automatic updates with Watchtower? Recommended, so new Piped releases and fixes are installed for you. (Y/n)" && read -r autoupdate
 
+# Random secret (32 bytes as 64 hex characters) that the backend uses to verify PubSub notifications.
+# Generated before the old config is removed, so a failure leaves the existing installation untouched.
+pubsub_secret=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+if [ ${#pubsub_secret} -ne 64 ]; then
+    echo "Could not generate a random PubSub secret from /dev/urandom." >&2
+    exit 1
+fi
+
 rm -rf config/
 rm -f docker-compose.yml
 
@@ -18,6 +26,7 @@ sed -i "s/PROXY_HOSTNAME/$proxy/g" $conffiles
 
 sed -i "s/BACKEND_HOSTNAME_PLACEHOLDER/$backend/g" config/*.yml
 sed -i "s/HTTP_MODE_PLACEHOLDER/$http_mode/g" config/*.yml $conffiles
+sed -i "s/PUBSUB_SECRET_PLACEHOLDER/$pubsub_secret/g" config/config.properties
 
 mv config/docker-compose.$reverseproxy.yml docker-compose.yml
 
