@@ -59,6 +59,8 @@ services:
             - POSTGRES_USER=piped
             - POSTGRES_PASSWORD=changeme
         container_name: postgres
+    # BEGIN watchtower: automatic image updates. configure-instance.sh deletes everything
+    # from here to "END watchtower" when automatic updates are turned off.
     watchtower:
         image: nickfedor/watchtower
         restart: always
@@ -70,6 +72,7 @@ services:
             - WATCHTOWER_INCLUDE_RESTARTING=true
         container_name: watchtower
         command: piped-frontend piped-backend piped-proxy piped-bg-helper nginx caddy postgres watchtower
+    # END watchtower
 volumes:
     caddy_data: null
     piped-proxy: null
