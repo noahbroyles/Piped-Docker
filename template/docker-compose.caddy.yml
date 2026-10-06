@@ -1,6 +1,6 @@
 services:
     piped-frontend:
-        image: 1337kavin/piped-frontend:latest
+        image: ghcr.io/noahbroyles/piped-frontend:latest
         restart: unless-stopped
         depends_on:
             - piped
@@ -17,7 +17,7 @@ services:
             - piped-proxy:/app/socket
         container_name: piped-proxy
     piped:
-        image: 1337kavin/piped:latest
+        image: ghcr.io/noahbroyles/piped-backend:latest
         restart: unless-stopped
         volumes:
             - ./config/config.properties:/app/config.properties:ro
