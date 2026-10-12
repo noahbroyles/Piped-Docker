@@ -1,6 +1,6 @@
 # Piped-Docker
 
-This is a fork of [TeamPiped/Piped-Docker](https://github.com/TeamPiped/Piped-Docker). It sets up Piped the same way, but its compose templates use fixed builds of the frontend and the backend instead of the official images. Everything else (the proxy, the bg-helper, Postgres, nginx, Caddy and Watchtower) still uses the official images. It also offers automatic updates with Watchtower for every stack type, including standalone, which the official repository sets up without them.
+This is a fork of [TeamPiped/Piped-Docker](https://github.com/TeamPiped/Piped-Docker). It sets up Piped the same way, but its compose templates use fixed builds of the frontend, the backend and the proxy instead of the official images, and add a small service for SABR playback. Everything else (the bg-helper, Postgres, nginx, Caddy and Watchtower) still uses the official images. It also offers automatic updates with Watchtower for every stack type, including standalone, which the official repository sets up without them.
 
 For general self-hosting instructions, see https://piped-docs.kavin.rocks/docs/self-hosting/#docker-compose-caddy-aio-script
 
@@ -8,10 +8,12 @@ For general self-hosting instructions, see https://piped-docs.kavin.rocks/docs/s
 
 | Service | Official image | This fork | What it fixes |
 |---|---|---|---|
-| Frontend | `1337kavin/piped-frontend` | `ghcr.io/noahbroyles/piped-frontend` ([source](https://github.com/noahbroyles/Piped)) | Live streams load the watch page but then spin on the thumbnail forever while the time keeps advancing. YouTube names the audio segments of its live HLS streams `seg.ts` although they are packed AAC, so Shaka Player treats them as MPEG-TS and never lines the audio up with the video. The fixed frontend renames those segments so Shaka handles them as AAC. It also updates Shaka Player to 5.2.12. |
-| Backend | `1337kavin/piped` | `ghcr.io/noahbroyles/piped-backend` ([source](https://github.com/noahbroyles/Piped-Backend)) | Videos are only available in 360p. The official image ships an outdated NewPipeExtractor, which can make `/streams` return only YouTube's single 360p stream with audio and video combined (itag 18), with no higher resolutions or separate audio streams. The fork updates NewPipeExtractor to upstream commit `01fdde0` (Piped-Backend PR #895).<br><br>**Security:** it also fixes six security problems in the official backend, listed [below](#backend-security-fixes). |
+| Frontend | `1337kavin/piped-frontend` | `ghcr.io/noahbroyles/piped-frontend` ([source](https://github.com/noahbroyles/Piped)) | Live streams load the watch page but then spin on the thumbnail forever while the time keeps advancing. YouTube names the audio segments of its live HLS streams `seg.ts` although they are packed AAC, so Shaka Player treats them as MPEG-TS and never lines the audio up with the video. The fixed frontend renames those segments so Shaka handles them as AAC. It also updates Shaka Player to 5.2.12.<br><br>It also plays videos over [SABR](#sabr) when the backend offers it, in every quality YouTube has (up to 4K). |
+| Backend | `1337kavin/piped` | `ghcr.io/noahbroyles/piped-backend` ([source](https://github.com/noahbroyles/Piped-Backend)) | Videos are only available in 360p. The official image ships an outdated NewPipeExtractor, which can make `/streams` return only YouTube's single 360p stream with audio and video combined (itag 18), with no higher resolutions or separate audio streams. The fork updates NewPipeExtractor to upstream commit `01fdde0` (Piped-Backend PR #895).<br><br>**Security:** it also fixes six security problems in the official backend, listed [below](#backend-security-fixes).<br><br>It also adds what a SABR player needs to `/streams` (see [SABR](#sabr)). |
+| Proxy | `1337kavin/piped-proxy` | `ghcr.io/noahbroyles/piped-proxy` ([source](https://github.com/noahbroyles/piped-proxy)) | The official proxy only allows `GET` requests, so it can't carry SABR, which `POST`s every request. The fork passes SABR requests through and keeps SABR redirects on the proxy, so your browser never contacts Google directly. |
+| Player n decoder | none | `ghcr.io/noahbroyles/piped-player-n-decoder` ([source](https://github.com/noahbroyles/piped-player-n-decoder)) | New. YouTube only serves SABR streams when the `n` parameter of their URL is deciphered with its own player code, which NewPipeExtractor can no longer do. This small service does it for the backend. |
 
-Both images are drop-in replacements for the official ones: they read the same configuration and environment variables. They are public (no login needed), built for `linux/amd64` and `linux/arm64`, and published on every push to the `master` branch of their repositories. When automatic updates are on, Watchtower keeps them updated from GitHub Container Registry like the official images, because it selects containers by name rather than by image.
+The frontend, backend and proxy images are drop-in replacements for the official ones: they read the same configuration and environment variables. All the images are public (no login needed), built for `linux/amd64` and `linux/arm64`, and published on every push to the default branch of their repositories (`master` for the frontend and backend, `main` for the proxy and the n decoder). When automatic updates are on, Watchtower keeps them updated from GitHub Container Registry like the official images, because it selects containers by name rather than by image.
 
 ### Backend security fixes
 
@@ -42,6 +44,18 @@ PUBSUB_SECRET:<the generated value>
 
 Without it, the backend logs a warning at startup and accepts notifications from anyone. Keep the secret private and do not change it later. Notifications for subscriptions made before it was set (or with an older secret) are dropped until those subscriptions renew, within about 4 days, so some new videos may be missing from feeds during that time.
 
+## SABR
+
+YouTube's web player streams videos with SABR (server adaptive bitrate). Instead of fetching each quality from its own URL, the player `POST`s its playback state to a single streaming URL, and YouTube decides which pieces of video to send back. YouTube is moving more and more videos to SABR only, which is what limits other clients to 360p.
+
+With this fork, the backend adds a `sabr` object to `/streams`, and the frontend plays it with [googlevideo](https://github.com/LuanRT/googlevideo)'s SABR adapter, the way YouTube's own player does. All of it still goes through your proxy. It needs:
+
+-   the n decoder (`PLAYER_N_DECODER_URL` in `config.properties`), without which the backend leaves `sabr` out;
+-   the bg-helper (`BG_HELPER_URL`), for the PoToken that YouTube expects with every SABR request;
+-   `PROXY_PUBLIC_URL` on the proxy, its public URL, since SABR redirects have to point back at it. `configure-instance.sh` sets it for you.
+
+When SABR doesn't work for a video, the frontend falls back to the regular streams. To turn SABR off, set `DISABLE_SABR:true` in `config.properties` for the whole instance, or turn off "Use SABR streaming" in the frontend's preferences for one browser.
+
 ## New installation
 
 Use this repository in place of the official one, and follow the rest of the official guide as usual:
@@ -67,7 +81,7 @@ To add Watchtower to an existing installation without rerunning the script, copy
 
 Do not rerun `configure-instance.sh` on an existing installation. It deletes and regenerates the `config/` directory, which would throw away any changes you made to `config/config.properties`.
 
-Instead, edit the `docker-compose.yml` of your installation and change only the `image` lines of the frontend and backend services. Keep everything else, including the volume that mounts your `config.properties` into the backend.
+Instead, edit the `docker-compose.yml` of your installation and change only the `image` lines of the frontend, backend and proxy services. Keep everything else, including the volume that mounts your `config.properties` into the backend.
 
 ```diff
 -        image: 1337kavin/piped-frontend:latest
@@ -79,6 +93,27 @@ Instead, edit the `docker-compose.yml` of your installation and change only the 
 +        image: ghcr.io/noahbroyles/piped-backend:latest
 ```
 
+```diff
+-        image: 1337kavin/piped-proxy:latest
++        image: ghcr.io/noahbroyles/piped-proxy:latest
+```
+
+For [SABR](#sabr), also:
+
+1.  Add your proxy's public URL to the `environment` of the proxy service (use your own hostname):
+
+    ```yaml
+            - PROXY_PUBLIC_URL=https://pipedproxy.example.com
+    ```
+
+2.  Copy the `piped-player-n-decoder` service from the template for your stack in [`template/`](template) into the `services` section, and add `piped-player-n-decoder` to the container names on Watchtower's `command` line if you use it.
+
+3.  Add this line to `config/config.properties`:
+
+    ```
+    PLAYER_N_DECODER_URL:http://piped-player-n-decoder:3001
+    ```
+
 Then pull the new images and recreate the containers:
 
 ```sh
@@ -86,15 +121,15 @@ docker compose pull
 docker compose up -d
 ```
 
-To go back to the official images, change the two `image` lines back and run the same two commands.
+To go back to the official images, change the `image` lines back, remove the n decoder service and run the same two commands.
 
 ## Pinning a version
 
-Both images are published with two kinds of tags:
+All the images are published with two kinds of tags:
 
--   `latest` follows the `master` branch of the image's repository.
+-   `latest` follows the default branch of the image's repository.
 -   `sha-<commit>` pins a specific build, using the short commit hash from that repository.
 
 ## Problems
 
-If the frontend or the backend misbehaves with these images, please open an issue on [noahbroyles/Piped](https://github.com/noahbroyles/Piped/issues) (frontend) or [noahbroyles/Piped-Backend](https://github.com/noahbroyles/Piped-Backend/issues) (backend). For problems with the compose setup itself, open an issue on [this repository](https://github.com/noahbroyles/Piped-Docker/issues).
+If one of these images misbehaves, please open an issue on [noahbroyles/Piped](https://github.com/noahbroyles/Piped/issues) (frontend), [noahbroyles/Piped-Backend](https://github.com/noahbroyles/Piped-Backend/issues) (backend), [noahbroyles/piped-proxy](https://github.com/noahbroyles/piped-proxy/issues) (proxy) or [noahbroyles/piped-player-n-decoder](https://github.com/noahbroyles/piped-player-n-decoder/issues) (n decoder). For problems with the compose setup itself, open an issue on [this repository](https://github.com/noahbroyles/Piped-Docker/issues).

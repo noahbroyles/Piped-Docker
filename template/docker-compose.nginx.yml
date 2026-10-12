@@ -9,10 +9,12 @@ services:
             HTTP_MODE: HTTP_MODE_PLACEHOLDER
         container_name: piped-frontend
     piped-proxy:
-        image: 1337kavin/piped-proxy:latest
+        image: ghcr.io/noahbroyles/piped-proxy:latest
         restart: unless-stopped
         environment:
             - UDS=1
+            # Public URL of the proxy, which SABR redirects are pointed back at
+            - PROXY_PUBLIC_URL=HTTP_MODE_PLACEHOLDER://PROXY_HOSTNAME_PLACEHOLDER
         volumes:
             - piped-proxy:/app/socket
         container_name: piped-proxy
@@ -28,6 +30,16 @@ services:
         image: 1337kavin/bg-helper-server:latest
         restart: unless-stopped
         container_name: piped-bg-helper
+    piped-player-n-decoder:
+        image: ghcr.io/noahbroyles/piped-player-n-decoder:latest
+        restart: unless-stopped
+        # Runs code from YouTube's player, so it gets nothing it doesn't need
+        read_only: true
+        cap_drop:
+            - ALL
+        security_opt:
+            - no-new-privileges:true
+        container_name: piped-player-n-decoder
     nginx:
         image: nginx:mainline-alpine
         restart: unless-stopped
@@ -72,7 +84,7 @@ services:
             - WATCHTOWER_CLEANUP=true
             - WATCHTOWER_INCLUDE_RESTARTING=true
         container_name: watchtower
-        command: piped-frontend piped-backend piped-proxy piped-bg-helper varnish nginx postgres watchtower
+        command: piped-frontend piped-backend piped-proxy piped-bg-helper piped-player-n-decoder varnish nginx postgres watchtower
     # END watchtower
 volumes:
     piped-proxy: null
