@@ -27,7 +27,7 @@ services:
             - postgres
         container_name: piped-backend
     bg-helper:
-        image: 1337kavin/bg-helper-server:latest
+        image: ghcr.io/noahbroyles/bg-helper-server:latest
         restart: unless-stopped
         container_name: piped-bg-helper
     piped-player-n-decoder:
