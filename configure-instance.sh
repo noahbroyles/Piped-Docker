@@ -25,6 +25,7 @@ sed -i "s/BACKEND_HOSTNAME/$backend/g" $conffiles
 sed -i "s/PROXY_HOSTNAME/$proxy/g" $conffiles
 
 sed -i "s/BACKEND_HOSTNAME_PLACEHOLDER/$backend/g" config/*.yml
+sed -i "s/PROXY_HOSTNAME_PLACEHOLDER/$proxy/g" config/*.yml
 sed -i "s/HTTP_MODE_PLACEHOLDER/$http_mode/g" config/*.yml $conffiles
 sed -i "s/PUBSUB_SECRET_PLACEHOLDER/$pubsub_secret/g" config/config.properties
 
